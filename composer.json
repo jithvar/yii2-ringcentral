@@ -1,0 +1,28 @@
+{
+    "name": "jithvar/yii2-ringcentral",
+    "description": "Send Fax using RingCentral with Yii2",
+    "type": "yii2-extension",
+    "keywords": [
+        "yii2",
+        "extension",
+        "fax",
+        "ringcentral"
+    ],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Sachin Jaiswal",
+            "email": "sachin@jithvar.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.4.0",
+        "yiisoft/yii2": "~2.0.0",
+        "ringcentral/ringcentral-php": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "ringcentral\\fax\\": "src/"
+        }
+    }
+}
