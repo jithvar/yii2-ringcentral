@@ -31,6 +31,11 @@ class RingCentralFax extends Component
     public $jwtToken;
 
     /**
+     * @var callable Token refresh callback
+     */
+    public $tokenRefreshCallback;
+
+    /**
      * @var SDK RingCentral SDK instance
      */
     private $_platform;
@@ -64,9 +69,24 @@ class RingCentralFax extends Component
         $rcsdk = new SDK($this->clientId, $this->clientSecret, $this->serverUrl, 'Yii2RingCentralFax/1.0.0');
         
         $platform = $rcsdk->platform();
+        
+        // Set up token refresh callback
+        $platform->on(\RingCentral\SDK\Platform\Platform::EVENT_TOKEN_REFRESHED, function($platform, $token) {
+            if (is_callable($this->tokenRefreshCallback)) {
+                call_user_func($this->tokenRefreshCallback, $token);
+            }
+        });
+
         try {
             $platform->auth()->setData(['access_token' => $this->jwtToken]);
+            
+            // Verify token and refresh if needed
+            $platform->refresh();
+            
         } catch (\Exception $e) {
+            if (strpos($e->getMessage(), 'Token expired') !== false || strpos($e->getMessage(), 'Refresh token has expired') !== false) {
+                throw new \yii\base\Exception('RingCentral token has expired. Please provide a new token.');
+            }
             throw new \yii\base\Exception('RingCentral authentication failed: ' . $e->getMessage());
         }
         
@@ -85,25 +105,32 @@ class RingCentralFax extends Component
             throw new InvalidConfigException('Both "to" and "files" parameters are required');
         }
 
-        $request = $this->_platform->post('/restapi/v1.0/account/~/extension/~/fax', [
-            'to' => [['phoneNumber' => $params['to']]],
-            'faxResolution' => 'High',
-        ]);
-
-        // Add files to the request
-        foreach ($params['files'] as $file) {
-            $request->addFile($file);
-        }
-
-        // Add cover page text if provided
-        if (isset($params['text'])) {
-            $request->addText($params['text']);
-        }
-
         try {
+            $request = $this->_platform->post('/restapi/v1.0/account/~/extension/~/fax', [
+                'to' => [['phoneNumber' => $params['to']]],
+                'faxResolution' => 'High',
+            ]);
+
+            // Add files to the request
+            foreach ($params['files'] as $file) {
+                $request->addFile($file);
+            }
+
+            // Add cover page text if provided
+            if (isset($params['text'])) {
+                $request->addText($params['text']);
+            }
+
             $response = $request->send();
             return $response->json();
+            
         } catch (ApiException $e) {
+            if (strpos($e->getMessage(), 'token_expired') !== false) {
+                // Try to refresh the token
+                $this->_platform->refresh();
+                // Retry the request
+                return $this->send($params);
+            }
             throw $e;
         }
     }
