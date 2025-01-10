@@ -31,11 +31,6 @@ class RingCentralFax extends Component
     public $jwtToken;
 
     /**
-     * @var callable Token refresh callback
-     */
-    public $tokenRefreshCallback;
-
-    /**
      * @var SDK RingCentral SDK instance
      */
     private $_platform;
@@ -84,10 +79,10 @@ class RingCentralFax extends Component
     }
 
     /**
-     * Refresh the platform instance with a new token
-     * @param string $newToken
+     * Update the JWT token
+     * @param string $newToken New JWT token from RingCentral Developer Portal
      */
-    public function refreshToken($newToken)
+    public function updateToken($newToken)
     {
         $this->jwtToken = $newToken;
         $this->_platform = $this->getPlatform();
@@ -127,15 +122,10 @@ class RingCentralFax extends Component
         } catch (ApiException $e) {
             if (strpos($e->getMessage(), 'token_expired') !== false || 
                 strpos($e->getMessage(), 'Refresh token has expired') !== false) {
-                if (is_callable($this->tokenRefreshCallback)) {
-                    $newToken = call_user_func($this->tokenRefreshCallback);
-                    if ($newToken) {
-                        $this->refreshToken($newToken);
-                        // Retry the request with new token
-                        return $this->send($params);
-                    }
-                }
-                throw new \yii\base\Exception('RingCentral token has expired. Please provide a new token.');
+                throw new \yii\base\Exception(
+                    'JWT token has expired. Please generate a new token from RingCentral Developer Portal ' .
+                    'and update it using updateToken() method.'
+                );
             }
             throw $e;
         }
