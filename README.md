@@ -33,9 +33,11 @@ Add the following to your application configuration:
         'serverUrl' => 'https://platform.ringcentral.com', // Use 'https://platform.devtest.ringcentral.com' for sandbox
         'jwtToken' => 'YOUR_JWT_TOKEN',
         // Optional: Callback for token refresh
-        'tokenRefreshCallback' => function($token) {
-            // Store the new token
-            Yii::$app->settings->set('ringcentral.token', $token['access_token']);
+        'tokenRefreshCallback' => function() {
+            // Get and return a new token
+            $newToken = Yii::$app->cache->get('ringcentral_token');
+            // or from database, API call, etc.
+            return $newToken;
         }
     ],
 ]
@@ -43,22 +45,23 @@ Add the following to your application configuration:
 
 ## Token Management
 
-The extension automatically handles token refresh when possible. You can provide a callback function to handle the new token when it's refreshed:
+The extension will attempt to use the token refresh callback when a token expires. Your callback should return a new valid token:
 
 ```php
-'tokenRefreshCallback' => function($token) {
-    // Store the new token in your preferred storage
-    // Example with database:
-    Yii::$app->db->createCommand()
-        ->update('settings', ['value' => $token['access_token']], ['key' => 'ringcentral_token'])
-        ->execute();
+'tokenRefreshCallback' => function() {
+    // Example: Get new token from your token management service
+    $newToken = MyTokenService::getNewToken();
     
-    // Or with cache:
-    Yii::$app->cache->set('ringcentral_token', $token['access_token']);
+    // Or from database
+    $newToken = Yii::$app->db->createCommand('SELECT value FROM settings WHERE key = :key')
+        ->bindValue(':key', 'ringcentral_token')
+        ->queryScalar();
+    
+    return $newToken;
 }
 ```
 
-If the token has expired and cannot be refreshed, the extension will throw an exception with a clear message.
+If no callback is provided or the callback returns null, the extension will throw an exception when the token expires.
 
 ## Usage
 
@@ -73,9 +76,10 @@ try {
 } catch (\yii\base\Exception $e) {
     // Handle token expiration or other errors
     if (strpos($e->getMessage(), 'token has expired') !== false) {
-        // Get new token and update configuration
-        $newToken = getNewToken(); // Your token refresh logic
-        Yii::$app->ringcentralFax->jwtToken = $newToken;
+        // Get new token from your token management system
+        $newToken = MyTokenService::getNewToken();
+        // Update the component
+        Yii::$app->ringcentralFax->refreshToken($newToken);
     }
 }
 ```

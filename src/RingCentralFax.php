@@ -70,27 +70,27 @@ class RingCentralFax extends Component
         
         $platform = $rcsdk->platform();
         
-        // Set up token refresh callback
-        $platform->on(\RingCentral\SDK\Platform\Platform::EVENT_TOKEN_REFRESHED, function($platform, $token) {
-            if (is_callable($this->tokenRefreshCallback)) {
-                call_user_func($this->tokenRefreshCallback, $token);
-            }
-        });
-
         try {
-            $platform->auth()->setData(['access_token' => $this->jwtToken]);
-            
-            // Verify token and refresh if needed
-            $platform->refresh();
+            $platform->auth()->setData([
+                'token_type' => 'Bearer',
+                'access_token' => $this->jwtToken,
+            ]);
             
         } catch (\Exception $e) {
-            if (strpos($e->getMessage(), 'Token expired') !== false || strpos($e->getMessage(), 'Refresh token has expired') !== false) {
-                throw new \yii\base\Exception('RingCentral token has expired. Please provide a new token.');
-            }
             throw new \yii\base\Exception('RingCentral authentication failed: ' . $e->getMessage());
         }
         
         return $platform;
+    }
+
+    /**
+     * Refresh the platform instance with a new token
+     * @param string $newToken
+     */
+    public function refreshToken($newToken)
+    {
+        $this->jwtToken = $newToken;
+        $this->_platform = $this->getPlatform();
     }
 
     /**
@@ -125,11 +125,17 @@ class RingCentralFax extends Component
             return $response->json();
             
         } catch (ApiException $e) {
-            if (strpos($e->getMessage(), 'token_expired') !== false) {
-                // Try to refresh the token
-                $this->_platform->refresh();
-                // Retry the request
-                return $this->send($params);
+            if (strpos($e->getMessage(), 'token_expired') !== false || 
+                strpos($e->getMessage(), 'Refresh token has expired') !== false) {
+                if (is_callable($this->tokenRefreshCallback)) {
+                    $newToken = call_user_func($this->tokenRefreshCallback);
+                    if ($newToken) {
+                        $this->refreshToken($newToken);
+                        // Retry the request with new token
+                        return $this->send($params);
+                    }
+                }
+                throw new \yii\base\Exception('RingCentral token has expired. Please provide a new token.');
             }
             throw $e;
         }
