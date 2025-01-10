@@ -1,6 +1,6 @@
 # Yii2 RingCentral Fax Extension
 
-This extension provides RingCentral Fax integration for Yii2 framework using JWT authentication.
+This extension provides RingCentral Fax integration for Yii2 framework with OAuth 2.0 refresh token support.
 
 ## Installation
 
@@ -22,11 +22,7 @@ to the require section of your `composer.json` file.
 
 ## Configuration
 
-There are two ways to configure the extension:
-
-### 1. Using Private Key (Recommended)
-
-This method allows automatic JWT token generation and renewal:
+### Basic Configuration
 
 ```php
 'components' => [
@@ -35,14 +31,13 @@ This method allows automatic JWT token generation and renewal:
         'clientId' => 'YOUR_CLIENT_ID',
         'clientSecret' => 'YOUR_CLIENT_SECRET',
         'serverUrl' => 'https://platform.ringcentral.com', // Use 'https://platform.devtest.ringcentral.com' for sandbox
-        'privateKey' => '-----BEGIN PRIVATE KEY-----\nYour Private Key Here\n-----END PRIVATE KEY-----'
+        'accessToken' => 'YOUR_ACCESS_TOKEN',
+        'refreshToken' => 'YOUR_REFRESH_TOKEN'
     ],
 ]
 ```
 
-### 2. Using JWT Token
-
-If you prefer to manage tokens manually:
+### Advanced Configuration with Token Refresh Callback
 
 ```php
 'components' => [
@@ -50,26 +45,41 @@ If you prefer to manage tokens manually:
         'class' => 'ringcentral\fax\RingCentralFax',
         'clientId' => 'YOUR_CLIENT_ID',
         'clientSecret' => 'YOUR_CLIENT_SECRET',
-        'serverUrl' => 'https://platform.ringcentral.com', // Use 'https://platform.devtest.ringcentral.com' for sandbox
-        'jwtToken' => 'YOUR_JWT_TOKEN'
+        'serverUrl' => 'https://platform.ringcentral.com',
+        'accessToken' => 'YOUR_ACCESS_TOKEN',
+        'refreshToken' => 'YOUR_REFRESH_TOKEN',
+        'tokenRefreshCallback' => function($tokens) {
+            // Save new tokens to your storage
+            Yii::$app->cache->set('ringcentral_access_token', $tokens['access_token']);
+            Yii::$app->cache->set('ringcentral_refresh_token', $tokens['refresh_token']);
+        }
     ],
 ]
 ```
 
-## Setting Up Private Key Authentication
+## Token Management
+
+This extension supports automatic token refresh:
+
+1. When the access token expires, the extension will automatically:
+   - Use the refresh token to get a new access token
+   - Update both tokens internally
+   - Retry the failed request
+   - Call your tokenRefreshCallback (if configured) with the new tokens
+
+2. If the refresh token expires:
+   - You'll need to obtain new tokens from RingCentral
+   - Update your configuration with the new tokens
+
+## Getting Access and Refresh Tokens
 
 1. Go to RingCentral Developer Portal
 2. Create or select your application
 3. Under "Auth & Security":
-   - Enable "JWT auth flow"
-   - Generate a new private/public key pair
-   - Download the private key
-4. Copy the private key content into your configuration
-
-With private key authentication:
-- Tokens are automatically generated when needed
-- Expired tokens are automatically renewed
-- No manual token management required
+   - Enable "OAuth 2.0"
+   - Enable "Issue refresh tokens"
+4. Use the OAuth 2.0 flow to obtain initial access and refresh tokens
+5. Store these tokens securely and use them in your configuration
 
 ## Usage
 
@@ -95,12 +105,26 @@ try {
     'class' => 'ringcentral\fax\RingCentralFax',
     'clientId' => getenv('RINGCENTRAL_CLIENT_ID'),
     'clientSecret' => getenv('RINGCENTRAL_CLIENT_SECRET'),
-    'privateKey' => getenv('RINGCENTRAL_PRIVATE_KEY'),
+    'accessToken' => getenv('RINGCENTRAL_ACCESS_TOKEN'),
+    'refreshToken' => getenv('RINGCENTRAL_REFRESH_TOKEN'),
     'serverUrl' => getenv('RINGCENTRAL_SERVER_URL'),
 ],
 ```
 
-2. Use environment-specific URLs:
+2. Always implement the tokenRefreshCallback to persist new tokens:
+```php
+'tokenRefreshCallback' => function($tokens) {
+    // Save to database
+    Yii::$app->db->createCommand()
+        ->update('settings', [
+            'access_token' => $tokens['access_token'],
+            'refresh_token' => $tokens['refresh_token']
+        ], ['name' => 'ringcentral'])
+        ->execute();
+},
+```
+
+3. Use environment-specific URLs:
 ```php
 'serverUrl' => YII_DEBUG 
     ? 'https://platform.devtest.ringcentral.com' 
