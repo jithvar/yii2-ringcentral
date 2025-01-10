@@ -26,19 +26,9 @@ class RingCentralFax extends Component
     public $serverUrl = 'https://platform.ringcentral.com';
 
     /**
-     * @var string RingCentral Username
+     * @var string JWT Token
      */
-    public $username;
-
-    /**
-     * @var string RingCentral Extension
-     */
-    public $extension;
-
-    /**
-     * @var string RingCentral Password
-     */
-    public $password;
+    public $jwtToken;
 
     /**
      * @var SDK RingCentral SDK instance
@@ -58,26 +48,27 @@ class RingCentralFax extends Component
         if (!$this->clientSecret) {
             throw new InvalidConfigException('RingCentral Client Secret must be set');
         }
-        if (!$this->username) {
-            throw new InvalidConfigException('RingCentral Username must be set');
-        }
-        if (!$this->password) {
-            throw new InvalidConfigException('RingCentral Password must be set');
+        if (!$this->jwtToken) {
+            throw new InvalidConfigException('RingCentral JWT Token must be set');
         }
 
         $this->_platform = $this->getPlatform();
     }
 
     /**
-     * Initialize RingCentral SDK
+     * Initialize RingCentral SDK with JWT authentication
      * @return \RingCentral\SDK\Platform\Platform
      */
     protected function getPlatform()
     {
-        $rcsdk = new SDK($this->clientId, $this->clientSecret, $this->serverUrl);
+        $rcsdk = new SDK($this->clientId, $this->clientSecret, $this->serverUrl, 'Yii2RingCentralFax/1.0.0');
         
         $platform = $rcsdk->platform();
-        $platform->login($this->username, $this->extension, $this->password);
+        try {
+            $platform->auth()->setData(['access_token' => $this->jwtToken]);
+        } catch (\Exception $e) {
+            throw new \yii\base\Exception('RingCentral authentication failed: ' . $e->getMessage());
+        }
         
         return $platform;
     }

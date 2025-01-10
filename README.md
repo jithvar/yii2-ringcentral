@@ -1,6 +1,6 @@
 # Yii2 RingCentral Fax Extension
 
-This extension provides RingCentral Fax integration for Yii2 framework.
+This extension provides RingCentral Fax integration for Yii2 framework using JWT authentication.
 
 ## Installation
 
@@ -9,13 +9,13 @@ The preferred way to install this extension is through [composer](http://getcomp
 Either run
 
 ```
-php composer.phar require --prefer-dist your-vendor/yii2-ringcentral-fax
+php composer.phar require --prefer-dist jithvar/yii2-ringcentral
 ```
 
 or add
 
 ```
-"your-vendor/yii2-ringcentral-fax": "*"
+"jithvar/yii2-ringcentral": "*"
 ```
 
 to the require section of your `composer.json` file.
@@ -31,9 +31,7 @@ Add the following to your application configuration:
         'clientId' => 'YOUR_CLIENT_ID',
         'clientSecret' => 'YOUR_CLIENT_SECRET',
         'serverUrl' => 'https://platform.ringcentral.com', // Use 'https://platform.devtest.ringcentral.com' for sandbox
-        'username' => 'YOUR_USERNAME',
-        'extension' => 'YOUR_EXTENSION', // Optional
-        'password' => 'YOUR_PASSWORD'
+        'jwtToken' => 'YOUR_JWT_TOKEN'
     ],
 ]
 ```
@@ -48,6 +46,15 @@ Yii::$app->ringcentralFax->send([
     'text' => 'Optional cover page text'
 ]);
 ```
+
+## Getting JWT Token
+
+1. Go to RingCentral Developer Portal
+2. Create or select your application
+3. Under "Auth & Security":
+   - Enable "JWT auth flow"
+   - Generate a JWT token with the required permissions (especially "Fax")
+4. Copy the generated JWT token and use it in your configuration
 
 ## License
 
