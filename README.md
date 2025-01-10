@@ -22,7 +22,27 @@ to the require section of your `composer.json` file.
 
 ## Configuration
 
-Add the following to your application configuration:
+There are two ways to configure the extension:
+
+### 1. Using Private Key (Recommended)
+
+This method allows automatic JWT token generation and renewal:
+
+```php
+'components' => [
+    'ringcentralFax' => [
+        'class' => 'ringcentral\fax\RingCentralFax',
+        'clientId' => 'YOUR_CLIENT_ID',
+        'clientSecret' => 'YOUR_CLIENT_SECRET',
+        'serverUrl' => 'https://platform.ringcentral.com', // Use 'https://platform.devtest.ringcentral.com' for sandbox
+        'privateKey' => '-----BEGIN PRIVATE KEY-----\nYour Private Key Here\n-----END PRIVATE KEY-----'
+    ],
+]
+```
+
+### 2. Using JWT Token
+
+If you prefer to manage tokens manually:
 
 ```php
 'components' => [
@@ -36,17 +56,20 @@ Add the following to your application configuration:
 ]
 ```
 
-## JWT Token Management
+## Setting Up Private Key Authentication
 
-This extension uses JWT authentication. JWT tokens have a fixed expiration time and cannot be automatically refreshed. When a token expires, you'll need to:
+1. Go to RingCentral Developer Portal
+2. Create or select your application
+3. Under "Auth & Security":
+   - Enable "JWT auth flow"
+   - Generate a new private/public key pair
+   - Download the private key
+4. Copy the private key content into your configuration
 
-1. Generate a new token from the RingCentral Developer Portal
-2. Update the token in your application using the updateToken method:
-
-```php
-// Update token when it expires
-Yii::$app->ringcentralFax->updateToken('YOUR_NEW_JWT_TOKEN');
-```
+With private key authentication:
+- Tokens are automatically generated when needed
+- Expired tokens are automatically renewed
+- No manual token management required
 
 ## Usage
 
@@ -59,25 +82,30 @@ try {
         'text' => 'Optional cover page text'
     ]);
 } catch (\yii\base\Exception $e) {
-    if (strpos($e->getMessage(), 'JWT token has expired') !== false) {
-        // Generate new token from RingCentral Developer Portal
-        // and update it in your application
-        $newToken = 'YOUR_NEW_JWT_TOKEN';
-        Yii::$app->ringcentralFax->updateToken($newToken);
-    }
+    // Handle any errors
+    Yii::error('Fax sending failed: ' . $e->getMessage());
 }
 ```
 
-## Getting JWT Token
+## Best Practices
 
-1. Go to RingCentral Developer Portal
-2. Create or select your application
-3. Under "Auth & Security":
-   - Enable "JWT auth flow"
-   - Generate a JWT token with the required permissions (especially "Fax")
-4. Copy the generated JWT token and use it in your configuration
+1. Store sensitive credentials securely:
+```php
+'ringcentralFax' => [
+    'class' => 'ringcentral\fax\RingCentralFax',
+    'clientId' => getenv('RINGCENTRAL_CLIENT_ID'),
+    'clientSecret' => getenv('RINGCENTRAL_CLIENT_SECRET'),
+    'privateKey' => getenv('RINGCENTRAL_PRIVATE_KEY'),
+    'serverUrl' => getenv('RINGCENTRAL_SERVER_URL'),
+],
+```
 
-Note: JWT tokens have a fixed expiration time (typically 1 hour). When a token expires, you'll need to generate a new one from the Developer Portal.
+2. Use environment-specific URLs:
+```php
+'serverUrl' => YII_DEBUG 
+    ? 'https://platform.devtest.ringcentral.com' 
+    : 'https://platform.ringcentral.com'
+```
 
 ## License
 

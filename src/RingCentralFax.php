@@ -7,6 +7,7 @@ use yii\base\Component;
 use yii\base\InvalidConfigException;
 use RingCentral\SDK\SDK;
 use RingCentral\SDK\Http\ApiException;
+use Firebase\JWT\JWT;
 
 class RingCentralFax extends Component
 {
@@ -26,7 +27,12 @@ class RingCentralFax extends Component
     public $serverUrl = 'https://platform.ringcentral.com';
 
     /**
-     * @var string JWT Token
+     * @var string Private Key for JWT generation
+     */
+    public $privateKey;
+
+    /**
+     * @var string JWT Token (will be auto-generated if privateKey is provided)
      */
     public $jwtToken;
 
@@ -48,11 +54,36 @@ class RingCentralFax extends Component
         if (!$this->clientSecret) {
             throw new InvalidConfigException('RingCentral Client Secret must be set');
         }
-        if (!$this->jwtToken) {
-            throw new InvalidConfigException('RingCentral JWT Token must be set');
+        if (!$this->privateKey && !$this->jwtToken) {
+            throw new InvalidConfigException('Either privateKey or jwtToken must be set');
+        }
+
+        if ($this->privateKey) {
+            $this->generateJwtToken();
         }
 
         $this->_platform = $this->getPlatform();
+    }
+
+    /**
+     * Generate a new JWT token using the private key
+     */
+    protected function generateJwtToken()
+    {
+        $now = time();
+        $payload = [
+            'iss' => $this->clientId,
+            'sub' => $this->clientId,
+            'aud' => $this->serverUrl,
+            'exp' => $now + 3600, // Token expires in 1 hour
+            'iat' => $now,
+        ];
+
+        try {
+            $this->jwtToken = JWT::encode($payload, $this->privateKey, 'RS256');
+        } catch (\Exception $e) {
+            throw new \yii\base\Exception('Failed to generate JWT token: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -76,16 +107,6 @@ class RingCentralFax extends Component
         }
         
         return $platform;
-    }
-
-    /**
-     * Update the JWT token
-     * @param string $newToken New JWT token from RingCentral Developer Portal
-     */
-    public function updateToken($newToken)
-    {
-        $this->jwtToken = $newToken;
-        $this->_platform = $this->getPlatform();
     }
 
     /**
@@ -122,9 +143,14 @@ class RingCentralFax extends Component
         } catch (ApiException $e) {
             if (strpos($e->getMessage(), 'token_expired') !== false || 
                 strpos($e->getMessage(), 'Refresh token has expired') !== false) {
+                if ($this->privateKey) {
+                    // Generate new token and retry
+                    $this->generateJwtToken();
+                    $this->_platform = $this->getPlatform();
+                    return $this->send($params);
+                }
                 throw new \yii\base\Exception(
-                    'JWT token has expired. Please generate a new token from RingCentral Developer Portal ' .
-                    'and update it using updateToken() method.'
+                    'JWT token has expired. Please provide a new token or configure privateKey for automatic token generation.'
                 );
             }
             throw $e;
