@@ -26,6 +26,11 @@ class RingCentralFax extends Component
     public $serverUrl = 'https://platform.ringcentral.com';
 
     /**
+     * @var string OAuth Redirect URL
+     */
+    public $redirectUrl;
+
+    /**
      * @var string Access Token
      */
     public $accessToken;
@@ -46,6 +51,11 @@ class RingCentralFax extends Component
     private $_platform;
 
     /**
+     * @var SDK RingCentral SDK instance
+     */
+    private $_rcsdk;
+
+    /**
      * {@inheritdoc}
      */
     public function init()
@@ -58,14 +68,70 @@ class RingCentralFax extends Component
         if (!$this->clientSecret) {
             throw new InvalidConfigException('RingCentral Client Secret must be set');
         }
-        if (!$this->accessToken) {
-            throw new InvalidConfigException('RingCentral Access Token must be set');
-        }
-        if (!$this->refreshToken) {
-            throw new InvalidConfigException('RingCentral Refresh Token must be set');
+        if (!$this->redirectUrl) {
+            throw new InvalidConfigException('OAuth Redirect URL must be set');
         }
 
-        $this->_platform = $this->getPlatform();
+        $this->_rcsdk = new SDK($this->clientId, $this->clientSecret, $this->serverUrl, 'Yii2RingCentralFax/1.0.0');
+        
+        // Only initialize platform if we have tokens
+        if ($this->accessToken && $this->refreshToken) {
+            $this->_platform = $this->getPlatform();
+        }
+    }
+
+    /**
+     * Get the OAuth authorization URL
+     * @param string $state Optional state parameter for CSRF protection
+     * @return string Authorization URL
+     */
+    public function getAuthorizationUrl($state = null)
+    {
+        return $this->_rcsdk->platform()->authUrl([
+            'redirectUri' => $this->redirectUrl,
+            'state' => $state
+        ]);
+    }
+
+    /**
+     * Handle OAuth callback and get tokens
+     * @param string $code Authorization code from callback
+     * @return array Array containing access_token and refresh_token
+     * @throws \Exception if token exchange fails
+     */
+    public function handleOAuthCallback($code)
+    {
+        try {
+            $response = $this->_rcsdk->platform()->login([
+                'code' => $code,
+                'redirect_uri' => $this->redirectUrl
+            ]);
+
+            $tokenData = $response->json();
+
+            // Update tokens
+            $this->accessToken = $tokenData['access_token'];
+            $this->refreshToken = $tokenData['refresh_token'];
+
+            // Initialize platform with new tokens
+            $this->_platform = $this->getPlatform();
+
+            // Notify about token refresh if callback is set
+            if (is_callable($this->tokenRefreshCallback)) {
+                call_user_func($this->tokenRefreshCallback, [
+                    'access_token' => $this->accessToken,
+                    'refresh_token' => $this->refreshToken
+                ]);
+            }
+
+            return [
+                'access_token' => $this->accessToken,
+                'refresh_token' => $this->refreshToken
+            ];
+
+        } catch (\Exception $e) {
+            throw new \yii\base\Exception('Failed to exchange authorization code: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -74,9 +140,7 @@ class RingCentralFax extends Component
      */
     protected function getPlatform()
     {
-        $rcsdk = new SDK($this->clientId, $this->clientSecret, $this->serverUrl, 'Yii2RingCentralFax/1.0.0');
-        
-        $platform = $rcsdk->platform();
+        $platform = $this->_rcsdk->platform();
         
         try {
             $platform->auth()->setData([
@@ -134,6 +198,10 @@ class RingCentralFax extends Component
             throw new InvalidConfigException('Both "to" and "files" parameters are required');
         }
 
+        if (!$this->_platform) {
+            throw new InvalidConfigException('Authentication required. Please obtain tokens first.');
+        }
+
         try {
             $request = $this->_platform->post('/restapi/v1.0/account/~/extension/~/fax', [
                 'to' => [['phoneNumber' => $params['to']]],
@@ -162,7 +230,7 @@ class RingCentralFax extends Component
             
             if (strpos($e->getMessage(), 'refresh_token_expired') !== false) {
                 throw new \yii\base\Exception(
-                    'Refresh token has expired. Please obtain new access and refresh tokens.'
+                    'Refresh token has expired. Please re-authenticate.'
                 );
             }
             
